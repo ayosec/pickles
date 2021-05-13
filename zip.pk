@@ -1,0 +1,375 @@
+// zip.pk - ZIP implementation for GNU poke.
+//
+// Copyright (C) 2021 Ayose C.
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+// This file contains a Poke partial description of the ZIP file format.
+// It should be enough to load most ZIP files, but not every feature in
+// the [1]ZIP File Format Specification.
+//
+// The [2]extrafld.txt, from the unzip package, contains more details
+// about the file format.
+//
+// [1]: https://pkware.cachefly.net/webdocs/APPNOTE/APPNOTE-6.3.9.TXT
+// [2]: https://sources.debian.org/src/unzip/6.0-26/proginfo/extrafld.txt/
+
+type ZIP_Off8  = offset<uint<8>,B>;
+type ZIP_Off16 = offset<uint<16>,B>;
+type ZIP_Off32 = offset<uint<32>,B>;
+type ZIP_Off64 = offset<uint<64>,B>;
+
+/*
+ * Extra Fields
+ */
+
+// Zip64 extended information.
+type ZIP_ExtraField_ZIP64 =
+  struct
+  {
+    little uint<16> header_id = 0x0001;
+    little ZIP_Off16 size;
+
+    little ZIP_Off64 uncompressed_size;
+    little ZIP_Off64 compressed_size if size >= 128#b;
+
+    byte[0] @ size + 32#b;
+  };
+
+// Extended timestamp.
+type ZIP_ExtraField_ExtTimestamp =
+  struct
+  {
+    little uint<16> header_id = 0x5455;
+    little ZIP_Off16 size;
+
+    little uint<8> info_bits;
+    little uint<32> last_modification;
+    little uint<32> last_access if size > 40#b;
+
+    byte[0] @ size + 32#b;
+  };
+
+// Unix identifiers.
+type ZIP_ExtraField_UnixIds =
+  struct
+  {
+    little uint<16> header_id = 0x7875;
+    little ZIP_Off16 size;
+
+    uint<8> version;
+
+    ZIP_Off8 uid_size;
+    byte[uid_size] uid_bytes if uid_size != 32#b;
+    little uint<32> uid if uid_size == 32#b;
+
+    ZIP_Off8 gid_size;
+    byte[gid_size] gid_bytes if gid_size != 32#b;
+    little uint<32> gid if gid_size == 32#b;
+
+    byte[0] @ size + 32#b;
+  };
+
+// Unknown extra field.
+type ZIP_ExtraField_Raw =
+  struct
+  {
+    little uint<16> header_id;
+    little ZIP_Off16 size;
+
+    byte[size] data;
+  };
+
+type ZIP_ExtraField =
+  union {
+    ZIP_ExtraField_ZIP64 zip64;
+    ZIP_ExtraField_ExtTimestamp ext_timestamp;
+    ZIP_ExtraField_UnixIds unix_ids;
+    ZIP_ExtraField_Raw raw;
+  };
+
+/*
+ * Entry headers
+ */
+
+/// Resolve the compressed or uncompressed size, using the value from the
+/// ZIP64 extension if present.
+fun _zip_get_size = (
+    ZIP_Off32 size,
+    ZIP_ExtraField[] extra_fields,
+    int compressed_field
+  ) ZIP_Off64:
+{
+  if (size == 0xffffffffU#B)
+  {
+    for (var i = 0; i < extra_fields'length; i++) // XXX for-in does not work here. Why?
+    {
+      var extra_field = extra_fields[i];
+      try
+      {
+        var z64 = extra_field.zip64;
+        return compressed_field ? z64.compressed_size : z64.uncompressed_size;
+      } catch if E_elem {}
+    }
+  }
+
+  return size as ZIP_Off64;
+}
+
+/// Local file header.
+type ZIP_Entry_LocalFileHeader =
+  struct
+  {
+    byte[4] signature = [ 'P', 'K', '\003', '\004' ];
+
+    little uint<16> version_to_extract;
+    little uint<16> general_purpose_flag;
+    little uint<16> compression;
+
+    little uint<16> mod_time;
+    little uint<16> mod_date;
+
+    little uint<32> crc;
+
+    little ZIP_Off32 compressed_size;
+    little ZIP_Off32 uncompressed_size;
+
+    little ZIP_Off16 file_name_length;
+    little ZIP_Off16 extra_field_length;
+
+    char[file_name_length] file_name;
+
+    ZIP_ExtraField[extra_field_length] extra_fields;
+
+    var data_offset = OFFSET;
+
+    var _payload_size = _zip_get_size(compressed_size, extra_fields, 1);
+
+    // Jump to next entry
+    byte[0] @ data_offset + _payload_size;
+
+    method get_file_name = string:
+    {
+      return catos(file_name);
+    }
+
+    method get_payload = byte[]:
+    {
+      return byte[_payload_size] @ signature'ios : (signature'offset + data_offset);
+    }
+
+    method get_uncompressed_size = ZIP_Off64:
+    {
+      return _zip_get_size(uncompressed_size, extra_fields, 0);
+    }
+  };
+
+// Central directory structure.
+type ZIP_Entry_CDStruct =
+  struct
+  {
+    byte[4] signature = [ 'P', 'K', '\001', '\002' ];
+
+    little uint<16> version_made_by;
+    little uint<16> version_to_extract;
+    little uint<16> general_purpose_flag;
+    little uint<16> compression;
+
+    little uint<16> mod_time;
+    little uint<16> mod_date;
+
+    little uint<32> crc;
+
+    little ZIP_Off32 compressed_size;
+    little ZIP_Off32 uncompressed_size;
+
+    little ZIP_Off16 file_name_length;
+    little ZIP_Off16 extra_field_length;
+    little ZIP_Off16 file_comment_length;
+
+    little uint<16> disk_number_start;
+
+    little uint<16> internal_attributes;
+    little uint<32> external_attributes;
+
+    little ZIP_Off32 local_file_header_relative_offset;
+
+    char[file_name_length] file_name;
+
+    ZIP_ExtraField[extra_field_length] extra_fields;
+
+    char[file_comment_length] file_comment;
+
+    method get_file_name = string:
+    {
+      return catos(file_name);
+    }
+
+    method get_uncompressed_size = ZIP_Off64:
+    {
+      return _zip_get_size(uncompressed_size, extra_fields, 0);
+    }
+  };
+
+// Zip64 end of central directory record.
+type ZIP_Entry_ZIP64EndOfCDRecord =
+  struct
+  {
+    byte[4] signature = [ 'P', 'K', '\006', '\006' ];
+
+    little ZIP_Off64 record_size;
+
+    little uint<16> version_made_by;
+    little uint<16> version_to_extract;
+
+    little uint<32> disk_number;
+    little uint<32> disk_cd;
+
+    little uint<64> cd_in_disk;
+    little uint<64> cd_records;
+    little ZIP_Off64 cd_size;
+    little ZIP_Off64 cd_disk_offset;
+
+    byte[record_size + 12#B - OFFSET] ext_data_sector;
+  };
+
+// Zip64 end of central directory locator.
+type ZIP_Entry_ZIP64EndOfCDLocator =
+  struct
+  {
+    byte[4] signature = [ 'P', 'K', '\006', '\007' ];
+
+    little uint<32> start_disk;
+    little ZIP_Off64 relative_offset_of_zip64_end;
+    little uint<32> number_of_disks;
+  };
+
+// End of central directory record.
+type ZIP_Entry_EndOfCDRecord =
+  struct
+  {
+    byte[4] signature = [ 'P', 'K', '\005', '\006' ];
+
+    little uint<16> disk_number;
+    little uint<16> start_disk;
+    little uint<16> cd_entries_this_disk;
+    little uint<16> cd_entries;
+    little ZIP_Off32 cd_size;
+    little ZIP_Off32 cd_start;
+    little ZIP_Off16 comment_length;
+    byte[comment_length] comment;
+  };
+
+type ZIP_Entry =
+  union {
+    ZIP_Entry_LocalFileHeader local_file_header;
+    ZIP_Entry_CDStruct cd_file_header;
+    ZIP_Entry_ZIP64EndOfCDRecord end_of_cd_file_header;
+    ZIP_Entry_ZIP64EndOfCDLocator end_of_cd_locator;
+    ZIP_Entry_EndOfCDRecord end_of_cd_record;
+
+    method variant_name = string:
+    {
+      try
+      {
+        var value = local_file_header;
+        return "ZIP_Entry_LocalFileHeader";
+      } catch if E_elem {};
+
+      try
+      {
+        var value = cd_file_header;
+        return "ZIP_Entry_CDStruct";
+      } catch if E_elem {};
+
+      try
+      {
+        var value = end_of_cd_file_header;
+        return "ZIP_Entry_ZIP64EndOfCDRecord";
+      } catch if E_elem {};
+
+      try
+      {
+        var value = end_of_cd_locator;
+        return "ZIP_Entry_ZIP64EndOfCDLocator";
+      } catch if E_elem {};
+
+      try
+      {
+        var value = end_of_cd_record;
+        return "ZIP_Entry_EndOfCDRecord";
+      } catch if E_elem {};
+
+      raise E_elem;
+    }
+  };
+
+/*
+ * Full file.
+ */
+
+type ZIP_File =
+  struct
+  {
+    ZIP_Entry[] entries;
+
+    method list_entries = void:
+    {
+      print("offet\tsize\tvariant\n");
+
+      for (entry in entries)
+      {
+        printf("%u64d\t", entry'offset/#B);
+        printf("%u64d\t", entry'size/#B);
+        printf("%s\n", entry.variant_name);
+      }
+    }
+  };
+
+
+/// Find the ZIP_Entry_EndOfCDRecord entry, which should be located at the end
+/// of the ZIP file.
+fun zip_find_end_of_cd_record = (
+    int ios = get_ios,
+    off64 search_offset = iosize(ios)
+  ) ZIP_Entry_EndOfCDRecord:
+{
+  search_offset -= ZIP_Entry_EndOfCDRecord {} 'size;
+  for (;; search_offset--)
+  {
+    try
+    {
+      return ZIP_Entry_EndOfCDRecord @ ios : search_offset;
+    } catch if E_constraint {};
+  }
+}
+
+/// List files found from the ZIP_Entry_EndOfCDRecord entry.
+fun zip_list_files = (
+    int ios = get_ios,
+    off64 search_offset = iosize(ios)
+  ) void:
+{
+  var end_record = zip_find_end_of_cd_record(ios, search_offset);
+  var start = end_record.cd_start;
+  var num_entries = end_record.cd_entries;
+
+  var entries = ZIP_Entry_CDStruct[num_entries] @ start;
+
+  for (entry in entries)
+  {
+    printf("%u64d\t", entry.get_uncompressed_size/#B);
+    printf("%s\n", entry.get_file_name);
+  }
+}
