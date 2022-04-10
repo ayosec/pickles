@@ -38,7 +38,7 @@ type ZIP_Off64 = offset<uint<64>,B>;
 type ZIP_ExtraField_ZIP64 =
   struct
   {
-    little uint<16> header_id = 0x0001;
+    little uint<16> header_id == 0x0001;
     little ZIP_Off16 size;
 
     little ZIP_Off64 uncompressed_size;
@@ -51,7 +51,7 @@ type ZIP_ExtraField_ZIP64 =
 type ZIP_ExtraField_ExtTimestamp =
   struct
   {
-    little uint<16> header_id = 0x5455;
+    little uint<16> header_id == 0x5455;
     little ZIP_Off16 size;
 
     little uint<8> info_bits;
@@ -65,7 +65,7 @@ type ZIP_ExtraField_ExtTimestamp =
 type ZIP_ExtraField_UnixIds =
   struct
   {
-    little uint<16> header_id = 0x7875;
+    little uint<16> header_id == 0x7875;
     little ZIP_Off16 size;
 
     uint<8> version;
@@ -131,7 +131,7 @@ fun _zip_get_size = (
 type ZIP_Entry_LocalFileHeader =
   struct
   {
-    byte[4] signature = [ 'P', 'K', '\003', '\004' ];
+    byte[4] signature == [ 'P', 'K', '\003', '\004' ];
 
     little uint<16> version_to_extract;
     little uint<16> general_purpose_flag;
@@ -179,7 +179,7 @@ type ZIP_Entry_LocalFileHeader =
 type ZIP_Entry_CDStruct =
   struct
   {
-    byte[4] signature = [ 'P', 'K', '\001', '\002' ];
+    byte[4] signature == [ 'P', 'K', '\001', '\002' ];
 
     little uint<16> version_made_by;
     little uint<16> version_to_extract;
@@ -226,7 +226,7 @@ type ZIP_Entry_CDStruct =
 type ZIP_Entry_ZIP64EndOfCDRecord =
   struct
   {
-    byte[4] signature = [ 'P', 'K', '\006', '\006' ];
+    byte[4] signature == [ 'P', 'K', '\006', '\006' ];
 
     little ZIP_Off64 record_size;
 
@@ -248,7 +248,7 @@ type ZIP_Entry_ZIP64EndOfCDRecord =
 type ZIP_Entry_ZIP64EndOfCDLocator =
   struct
   {
-    byte[4] signature = [ 'P', 'K', '\006', '\007' ];
+    byte[4] signature == [ 'P', 'K', '\006', '\007' ];
 
     little uint<32> start_disk;
     little ZIP_Off64 relative_offset_of_zip64_end;
@@ -259,7 +259,7 @@ type ZIP_Entry_ZIP64EndOfCDLocator =
 type ZIP_Entry_EndOfCDRecord =
   struct
   {
-    byte[4] signature = [ 'P', 'K', '\005', '\006' ];
+    byte[4] signature == [ 'P', 'K', '\005', '\006' ];
 
     little uint<16> disk_number;
     little uint<16> start_disk;
