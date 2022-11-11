@@ -1,0 +1,8 @@
+.set pretty-print yes
+.set omode tree
+
+var file = GHD_File @ 0#B
+
+file
+
+printf("\nSize = %u64d\n", file'size / #B)

@@ -1,0 +1,384 @@
+// go-heapdump.pk - Go heap dump for GNU poke.
+//
+// Copyright (C) 2022 Ayose C.
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+// The format is documented in
+// https://github.com/golang/go/wiki/heapdump15-through-heapdump17
+
+// Numeric values written by WriteHeapDump use a format compatible with
+// [1]encoding/binary, which reuses the [2]Protocol Buffers' varints. It
+// is not explicitly stated, but the format is compatible with LEB128.
+//
+// [1]: https://pkg.go.dev/encoding/binary
+// [2]: https://developers.google.com/protocol-buffers/docs/encoding#varints
+
+load leb128;
+
+
+// Record types.
+// From https://github.com/golang/go/blob/go1.18/src/runtime/heapdump.go#L41-L64
+
+var GHD_TAG_EOF              = 0;
+var GHD_TAG_OBJECT           = 1;
+var GHD_TAG_OTHER_ROOT       = 2;
+var GHD_TAG_TYPE             = 3;
+var GHD_TAG_GOROUTINE        = 4;
+var GHD_TAG_STACK_FRAME      = 5;
+var GHD_TAG_PARAMS           = 6;
+var GHD_TAG_FINALIZER        = 7;
+var GHD_TAG_ITAB             = 8;
+var GHD_TAG_OS_THREAD        = 9;
+var GHD_TAG_MEM_STATS        = 10;
+var GHD_TAG_QUEUED_FINALIZER = 11;
+var GHD_TAG_DATA             = 12;
+var GHD_TAG_BSS              = 13;
+var GHD_TAG_DEFER            = 14;
+var GHD_TAG_PANIC            = 15;
+var GHD_TAG_MEM_PROF         = 16;
+var GHD_TAG_ALLOC_SAMPLE     = 17;
+
+// Maximum number of bytes to print from a string.
+var GHD_STRINGS_PRINT_LIMIT = 32;
+
+type GHD_String =
+  struct
+  {
+    ULEB128 size;
+    byte[size.value] content;
+
+    method _print = void :
+    {
+      var to_print = size.value < GHD_STRINGS_PRINT_LIMIT ? content : content[:GHD_STRINGS_PRINT_LIMIT];
+
+      print("#<string:'");
+
+      // We can't use %v because it does not handle NUL characters.
+      for(c in to_print) {
+        if(c >= ' ' && c <= '~') {
+          printf("%c", c);
+        } else if(c == 0) {
+          print("\\0");
+        } else {
+          printf("\\x%u8x", c);
+        }
+      }
+
+      if(size.value >= GHD_STRINGS_PRINT_LIMIT) {
+        print("[...]");
+      }
+
+      printf("' (%u64d bytes)>", size.value);
+    }
+  };
+
+type GHD_FieldListPair =
+  struct
+  {
+    byte kind == 1;
+    ULEB128 field_offset;
+
+    method _print = void :
+    {
+      printf("#<field offset=%u64d>", field_offset.value);
+    }
+  };
+
+type GHD_FieldList =
+  struct
+  {
+    GHD_FieldListPair[] pairs;
+    byte EOL == 0;
+  };
+
+type GHD_Record_Object =
+  struct
+  {
+    byte tag == GHD_TAG_OBJECT;
+
+    ULEB128       address;
+    GHD_String    contents;
+    GHD_FieldList fields;
+  };
+
+type GHD_Record_OtherRoot =
+  struct
+  {
+    byte tag == GHD_TAG_OTHER_ROOT;
+
+    GHD_String source;
+    ULEB128    pointer;
+  };
+
+type GHD_Record_Type =
+  struct
+  {
+    byte tag == GHD_TAG_TYPE;
+
+    ULEB128    type_descriptor_address;
+    ULEB128    instance_size;
+    GHD_String name;
+    int<8>     is_pointer;
+  };
+
+type GHD_Record_Goroutine =
+  struct
+  {
+    byte tag == GHD_TAG_GOROUTINE;
+
+    ULEB128    descriptor_address;
+    ULEB128    stack_top_pointer;
+    ULEB128    routine_id;
+    ULEB128    creation_location;
+    ULEB128    status;
+    int<8>     is_system;
+    int<8>     is_background;
+    ULEB128    wait_last_start;
+    GHD_String wait_reason;
+    ULEB128    context_pointer;
+    ULEB128    thread_descriptor_address;
+    ULEB128    top_defer_record;
+    ULEB128    top_panic_record;
+  };
+
+type GHD_Record_StackFrame =
+  struct
+  {
+    byte tag == GHD_TAG_STACK_FRAME;
+
+    ULEB128       stack_pointer;
+    ULEB128       stack_depth;
+    ULEB128       child_frame_stack_pointer;
+    GHD_String    contents;
+    ULEB128       entry_pc;
+    ULEB128       current_pc;
+    ULEB128       continuation_pc;
+    GHD_String    function_name;
+    GHD_FieldList fields;
+
+  };
+
+type GHD_Record_DumpParams =
+  struct
+  {
+    byte tag == GHD_TAG_PARAMS;
+
+    int<8>     is_big_endian;
+    ULEB128    pointer_size;
+    ULEB128    heap_starting_address;
+    ULEB128    heap_ending_address;
+    GHD_String architecture_name;
+    GHD_String var_GOEXPERIMENT;
+    ULEB128    runtime_ncpu;
+  };
+
+type GHD_Record_Finalizer =
+  struct
+  {
+    byte tag == GHD_TAG_FINALIZER;
+
+    ULEB128 object_address;
+    ULEB128 function_address;
+    ULEB128 entry_point_address;
+    ULEB128 finalizer_argument;
+    ULEB128 object_type;
+  };
+
+type GHD_Record_Itab =
+  struct
+  {
+    byte tag == GHD_TAG_ITAB;
+
+    ULEB128 itab_address;
+    ULEB128 type_descriptor_address;
+  };
+
+type GHD_Record_OSThread =
+  struct
+  {
+    byte tag == GHD_TAG_OS_THREAD;
+
+    ULEB128 descriptor_address;
+    ULEB128 internal_id;
+    ULEB128 os_id;
+  };
+
+type GHD_Record_MemStats =
+  struct
+  {
+    byte tag == GHD_TAG_MEM_STATS;
+
+    ULEB128 alloc;
+    ULEB128 total_alloc;
+    ULEB128 sys;
+    ULEB128 lookups;
+    ULEB128 mallocs;
+    ULEB128 frees;
+    ULEB128 heap_alloc;
+    ULEB128 heap_sys;
+    ULEB128 heap_idle;
+    ULEB128 heap_inuse;
+    ULEB128 heap_released;
+    ULEB128 heap_objects;
+    ULEB128 stack_inuse;
+    ULEB128 stack_sys;
+    ULEB128 mspan_inuse;
+    ULEB128 mspan_sys;
+    ULEB128 mcache_inuse;
+    ULEB128 mcache_sys;
+    ULEB128 buck_hash_sys;
+    ULEB128 gc_sys;
+    ULEB128 other_sys;
+    ULEB128 next_gc;
+    ULEB128 last_gc;
+    ULEB128 pause_total_ns;
+    ULEB128[256] pause_ns;
+    ULEB128 num_gc;
+
+  };
+
+type GHD_Record_QueuedFinalizer =
+  struct
+  {
+    byte tag == GHD_TAG_QUEUED_FINALIZER;
+
+    ULEB128 object_address;
+    ULEB128 function_address;
+    ULEB128 entry_point_address;
+    ULEB128 finalizer_argument;
+    ULEB128 object_type;
+  };
+
+type GHD_Record_DataSegment =
+  struct
+  {
+    byte tag == GHD_TAG_DATA;
+
+    ULEB128       address;
+    GHD_String    contents;
+    GHD_FieldList fields;
+  };
+
+type GHD_Record_BSS =
+  struct
+  {
+    byte tag == GHD_TAG_BSS;
+
+    ULEB128       address;
+    GHD_String    contents;
+    GHD_FieldList fields;
+  };
+
+
+type GHD_Record_Defer =
+  struct
+  {
+    byte tag == GHD_TAG_DEFER;
+
+    ULEB128 record_address;
+    ULEB128 goroutine;
+    ULEB128 argp;
+    ULEB128 pc;
+    ULEB128 funcval;
+    ULEB128 entry_point_address;
+    ULEB128 next_defer_record;
+  };
+
+
+type GHD_Record_Panic =
+  struct
+  {
+    byte tag == GHD_TAG_PANIC;
+
+    ULEB128 record_address;
+    ULEB128 goroutine;
+    ULEB128 arg_type_ptr;
+    ULEB128 arg_data_field;
+    ULEB128 defer_record_pointer;
+    ULEB128 next_panic_record;
+  };
+
+type GHD_StackFrame =
+  struct
+  {
+    GHD_String function_name;
+    GHD_String file_name;
+    ULEB128    line_number;
+  };
+
+type GHD_Record_MemProf =
+  struct
+  {
+    byte tag == GHD_TAG_MEM_PROF;
+
+    ULEB128 identifier;
+    ULEB128 object_size;
+    ULEB128 number_stack_frames;
+    GHD_StackFrame[number_stack_frames.value] stack_frame;
+    ULEB128 number_allocations;
+    ULEB128 number_frees;
+  };
+
+type GHD_Record_AllocSample =
+  struct
+  {
+    byte tag == GHD_TAG_ALLOC_SAMPLE;
+
+    ULEB128 object_address;
+    ULEB128 mem_prof_identifier;
+  };
+
+type GHD_Record =
+  union
+  {
+    GHD_Record_Object          object;
+    GHD_Record_OtherRoot       other_root;
+    GHD_Record_Type            type_;
+    GHD_Record_Goroutine       goroutine;
+    GHD_Record_StackFrame      stack_frame;
+    GHD_Record_DumpParams      dump_params;
+    GHD_Record_Finalizer       finalizer;
+    GHD_Record_Itab            itab;
+    GHD_Record_OSThread        os_thread;
+    GHD_Record_MemStats        mem_stats;
+    GHD_Record_QueuedFinalizer queued_finalizer;
+    GHD_Record_DataSegment     data_segment;
+    GHD_Record_BSS             bss;
+    GHD_Record_Defer           defer;
+    GHD_Record_Panic           panic;
+    GHD_Record_MemProf         mem_prof;
+    GHD_Record_AllocSample     alloc_sample;
+    byte EOF == GHD_TAG_EOF;
+  };
+
+type GHD_FileVersion =
+  struct
+  {
+    byte[4]  before  == ['g', 'o', '1', '.'];
+    byte     version :  version in [ '5', '6', '7' ];
+    byte[11] after   == [' ', 'h', 'e', 'a', 'p', ' ', 'd', 'u', 'm', 'p', '\n'];
+
+    method _print = void :
+    {
+      printf("#<version:1.%c>", version);
+    }
+  };
+
+type GHD_File =
+  struct
+  {
+    GHD_FileVersion version;
+    GHD_Record[]    records;
+  };
