@@ -1,0 +1,62 @@
+// ico.pk - Implementation for GNU poke to read ICO files.
+//
+// Copyright (C) 2022 Ayose C.
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+// This file contains a Poke partial description of the [1]ICO file format.
+//
+// [1]: https://en.wikipedia.org/wiki/ICO_(file_format)
+
+
+type ICO_DirEntry = struct
+  {
+    uint<8> width;
+    uint<8> height;
+    uint<8> palette;
+    uint<8> reserved;
+
+    // For CUR images, horizontal coordinates of the hotspot.
+    little uint<16> color_planes;
+
+    // For CUR images, vertical coordinates of the hotspot.
+    little uint<16> bits_per_pixel;
+
+    little offset<uint<32>,B> image_size_bytes;
+    little offset<uint<32>,B> image_offset;
+
+    method get_image = byte[]:
+    {
+      return byte[image_size_bytes] @ image_offset;
+    }
+  };
+
+
+type ICO_FileType = union
+  {
+    little uint<16> ICO == 1;
+    little uint<16> CUR == 2;
+  };
+
+
+type ICO_File = struct
+  {
+    // Header
+    little uint<16> reserved == 0x0000;
+    ICO_FileType file_type;
+    little uint<16> number_of_images;
+
+    // Images
+    ICO_DirEntry[number_of_images] images;
+  };
