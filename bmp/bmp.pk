@@ -1,0 +1,183 @@
+// bmp.pk - Implementation for GNU poke to read BMP files.
+//
+// Copyright (C) 2022 Ayose C.
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+// This file contains a Poke partial description of the [1]BMP file format.
+//
+// [1]: https://en.wikipedia.org/wiki/BMP_(file_format)
+
+
+type BMP_OFF16 = offset<uint<16>, B>;
+type BMP_OFF32 = offset<uint<32>, B>;
+
+type BMP_LONG = int<32>;
+type BMP_WORD = uint<16>;
+type BMP_DWORD = uint<32>;
+
+// Compression methods.
+var BMP_BI_RGB = 0,
+    BMP_BI_BITFIELDS = 3,
+    BMP_BI_ALPHABITFIELDS = 6;
+
+type BMP_FileHeader = struct
+  {
+    char[2] magic == ['B', 'M'];
+    little BMP_OFF32 file_size;
+    little BMP_OFF16 reserved1;
+    little BMP_OFF16 reserved2;
+    little BMP_OFF32 image_data_offset;
+  };
+
+
+type BMP_RGB = struct
+  {
+    byte r;
+    byte g;
+    byte b;
+
+    method hex = string :
+    {
+      return format("#%u8x%u8x%u8x", r, g, b);
+    }
+  };
+
+
+type BMP_RGBA = struct
+  {
+    byte b;
+    byte g;
+    byte r;
+    byte a;
+
+    method hex = string :
+    {
+      return format("#%u8x%u8x%u8x%u8x", r, g, b, a);
+    }
+  };
+
+
+
+// CIEXYZTRIPLE and CIEXYZ are hard to express. We extract them just as a
+// 4-byte value.
+//
+// See https://twitter.com/AmeliaSZK/status/1382814168647139335 for more
+// details.
+
+type BMP_CIEXYZ = struct
+  {
+    byte[4] x;
+    byte[4] y;
+    byte[4] z;
+  };
+
+
+type BMP_CIEXYZTRIPE = struct
+  {
+    BMP_CIEXYZ r;
+    BMP_CIEXYZ g;
+    BMP_CIEXYZ b;
+  };
+
+type BMP_ImageHeader = union
+  {
+    struct {
+      little BMP_OFF32 size == 12#B;
+      little BMP_WORD width;
+      little BMP_WORD height;
+      little BMP_WORD color_planes;
+      little BMP_WORD bits_per_pixel;
+
+      BMP_RGB[2 ** bits_per_pixel] palette if bits_per_pixel <= 8;
+    } core;
+
+    struct {
+      little BMP_OFF32 size == 40#B;
+      little BMP_LONG width;
+      little BMP_LONG height;
+      little BMP_WORD color_planes;
+      little BMP_WORD bits_per_pixel;
+      little BMP_DWORD compression;
+      little BMP_OFF32 image_size;
+      little BMP_LONG x_pels_per_meter;
+      little BMP_LONG y_pels_per_meter;
+      little BMP_DWORD colors_used;
+      little BMP_DWORD colors_important;
+
+      little BMP_DWORD[3] bitmasks_rgb if compression == BMP_BI_BITFIELDS;
+      little BMP_DWORD[4] bitmasks_rgba if compression == BMP_BI_ALPHABITFIELDS;
+
+      var PALETTE_SIZE =
+        bits_per_pixel > 16
+          || compression == BMP_BI_BITFIELDS
+          || compression == BMP_BI_ALPHABITFIELDS
+        ? 0
+        : (colors_used == 0 ? (2 ** bits_per_pixel) : (colors_used as int<32>))
+        ;
+
+      BMP_RGBA[PALETTE_SIZE] palette if PALETTE_SIZE > 0;
+    } info;
+
+    struct {
+      little BMP_OFF32 size == 124#B;
+      little BMP_LONG width;
+      little BMP_LONG height;
+      little BMP_WORD planes;
+      little BMP_WORD bits_per_pixel;
+      little BMP_DWORD compression;
+      little BMP_DWORD size_image;
+      little BMP_LONG x_pels_per_meter;
+      little BMP_LONG y_pels_per_meter;
+      little BMP_DWORD colors_used;
+      little BMP_DWORD colors_important;
+      little BMP_DWORD red_mask;
+      little BMP_DWORD green_mask;
+      little BMP_DWORD blue_mask;
+      little BMP_DWORD alpha_mask;
+      little BMP_DWORD color_space_type;
+      BMP_CIEXYZTRIPE rgb_endpoints;
+      little BMP_DWORD gamma_red;
+      little BMP_DWORD gamma_green;
+      little BMP_DWORD gamma_blue;
+      little BMP_DWORD intent;
+      little BMP_DWORD profile_data;
+      little BMP_DWORD profile_size;
+      little BMP_DWORD reserved;
+
+      little BMP_DWORD[3] bitmasks_rgb if compression == BMP_BI_BITFIELDS;
+      little BMP_DWORD[4] bitmasks_rgba if compression == BMP_BI_ALPHABITFIELDS;
+
+      var PALETTE_SIZE =
+        bits_per_pixel > 16
+          || compression == BMP_BI_BITFIELDS
+          || compression == BMP_BI_ALPHABITFIELDS
+        ? 0
+        : (colors_used == 0 ? (2 ** bits_per_pixel) : (colors_used as int<32>))
+        ;
+
+      BMP_RGBA[PALETTE_SIZE] palette if PALETTE_SIZE > 0;
+    } v5;
+
+    struct {
+      little BMP_OFF32 size;
+      byte[size - 4#B] data;
+    } unknown;
+  };
+
+type BMP_File = struct
+  {
+    BMP_FileHeader file_header;
+    BMP_ImageHeader image_header;
+  };
