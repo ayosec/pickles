@@ -1,0 +1,161 @@
+// mbr.pk - Implementation for GNU poke to read a classical generic MBR.
+//
+// Copyright (C) 2023 Ayose C.
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+// This file contains a Poke partial description of the [1]MBR layout.
+//
+// [1]: https://en.wikipedia.org/wiki/Master_boot_record
+
+
+type MBR_PartitionStatus = struct
+  {
+    uint<1> active;
+    uint<7> padding;
+  };
+
+// From https://git.kernel.org/pub/scm/linux/kernel/git/mtk/util-linux.git/tree/include/pt-mbr.h
+type MBR_PartitionType = union
+  {
+    little byte EMPTY_PARTITION                == 0x00;
+    little byte FAT12_PARTITION                == 0x01;
+    little byte XENIX_ROOT_PARTITION           == 0x02;
+    little byte XENIX_USR_PARTITION            == 0x03;
+    little byte FAT16_LESS32M_PARTITION        == 0x04;
+    little byte DOS_EXTENDED_PARTITION         == 0x05;
+    little byte FAT16_PARTITION                == 0x06; /* DOS 16-bit >=32M */
+    little byte HPFS_NTFS_PARTITION            == 0x07; /* OS/2 IFS, eg, HPFS or NTFS or QNX */
+    little byte AIX_PARTITION                  == 0x08; /* AIX boot (AIX -- PS/2 port) or SplitDrive */
+    little byte AIX_BOOTABLE_PARTITION         == 0x09; /* AIX data or Coherent */
+    little byte OS2_BOOTMNGR_PARTITION         == 0x0a; /* OS/2 Boot Manager */
+    little byte W95_FAT32_PARTITION            == 0x0b;
+    little byte W95_FAT32_LBA_PARTITION        == 0x0c; /* LBA really is `Extended Int 13h' */
+    little byte W95_FAT16_LBA_PARTITION        == 0x0e;
+    little byte W95_EXTENDED_PARTITION         == 0x0f;
+    little byte OPUS_PARTITION                 == 0x10;
+    little byte HIDDEN_FAT12_PARTITION         == 0x11;
+    little byte COMPAQ_DIAGNOSTICS_PARTITION   == 0x12;
+    little byte HIDDEN_FAT16_L32M_PARTITION    == 0x14;
+    little byte HIDDEN_FAT16_PARTITION         == 0x16;
+    little byte HIDDEN_HPFS_NTFS_PARTITION     == 0x17;
+    little byte AST_SMARTSLEEP_PARTITION       == 0x18;
+    little byte HIDDEN_W95_FAT32_PARTITION     == 0x1b;
+    little byte HIDDEN_W95_FAT32LBA_PARTITION  == 0x1c;
+    little byte HIDDEN_W95_FAT16LBA_PARTITION  == 0x1e;
+    little byte NEC_DOS_PARTITION              == 0x24;
+    little byte PLAN9_PARTITION                == 0x39;
+    little byte PARTITIONMAGIC_PARTITION       == 0x3c;
+    little byte VENIX80286_PARTITION           == 0x40;
+    little byte PPC_PREP_BOOT_PARTITION        == 0x41;
+    little byte SFS_PARTITION                  == 0x42;
+    little byte QNX_4X_PARTITION               == 0x4d;
+    little byte QNX_4X_2ND_PARTITION           == 0x4e;
+    little byte QNX_4X_3RD_PARTITION           == 0x4f;
+    little byte DM_PARTITION                   == 0x50;
+    little byte DM6_AUX1_PARTITION             == 0x51; /* (or Novell) */
+    little byte CPM_PARTITION                  == 0x52; /* CP/M or Microport SysV/AT */
+    little byte DM6_AUX3_PARTITION             == 0x53;
+    little byte DM6_PARTITION                  == 0x54;
+    little byte EZ_DRIVE_PARTITION             == 0x55;
+    little byte GOLDEN_BOW_PARTITION           == 0x56;
+    little byte PRIAM_EDISK_PARTITION          == 0x5c;
+    little byte SPEEDSTOR_PARTITION            == 0x61;
+    little byte GNU_HURD_PARTITION             == 0x63; /* GNU HURD or Mach or Sys V/386 (such as ISC UNIX) */
+    little byte NETWARE_286_PARTITION          == 0x64;
+    little byte NETWARE_386_PARTITION          == 0x65;
+    little byte DISKSECURE_MULTIBOOT_PARTITION == 0x70;
+    little byte PC_IX_PARTITION                == 0x75;
+    little byte OLD_MINIX_PARTITION            == 0x80; /* Minix 1.4a and earlier */
+    little byte MINIX_PARTITION                == 0x81; /* Minix 1.4b and later */
+    little byte LINUX_SWAP_PARTITION           == 0x82;
+    little byte LINUX_DATA_PARTITION           == 0x83;
+    little byte OS2_HIDDEN_DRIVE_PARTITION     == 0x84; /* also hibernation MS APM, Intel Rapid Start */
+    little byte LINUX_EXTENDED_PARTITION       == 0x85;
+    little byte NTFS_VOL_SET1_PARTITION        == 0x86;
+    little byte NTFS_VOL_SET2_PARTITION        == 0x87;
+    little byte LINUX_PLAINTEXT_PARTITION      == 0x88;
+    little byte LINUX_LVM_PARTITION            == 0x8e;
+    little byte AMOEBA_PARTITION               == 0x93;
+    little byte AMOEBA_BBT_PARTITION           == 0x94; /* (bad block table) */
+    little byte BSD_OS_PARTITION               == 0x9f; /* BSDI */
+    little byte THINKPAD_HIBERNATION_PARTITION == 0xa0;
+    little byte FREEBSD_PARTITION              == 0xa5; /* various BSD flavours */
+    little byte OPENBSD_PARTITION              == 0xa6;
+    little byte NEXTSTEP_PARTITION             == 0xa7;
+    little byte DARWIN_UFS_PARTITION           == 0xa8;
+    little byte NETBSD_PARTITION               == 0xa9;
+    little byte DARWIN_BOOT_PARTITION          == 0xab;
+    little byte HFS_HFS_PARTITION              == 0xaf;
+    little byte BSDI_FS_PARTITION              == 0xb7;
+    little byte BSDI_SWAP_PARTITION            == 0xb8;
+    little byte BOOTWIZARD_HIDDEN_PARTITION    == 0xbb;
+    little byte ACRONIS_FAT32LBA_PARTITION     == 0xbc; /* Acronis Secure Zone with ipl for loader F11.SYS */
+    little byte SOLARIS_BOOT_PARTITION         == 0xbe;
+    little byte SOLARIS_PARTITION              == 0xbf;
+    little byte DRDOS_FAT12_PARTITION          == 0xc1;
+    little byte DRDOS_FAT16_L32M_PARTITION     == 0xc4;
+    little byte DRDOS_FAT16_PARTITION          == 0xc6;
+    little byte SYRINX_PARTITION               == 0xc7;
+    little byte NONFS_DATA_PARTITION           == 0xda;
+    little byte CPM_CTOS_PARTITION             == 0xdb; /* CP/M or Concurrent CP/M or Concurrent DOS or CTOS */
+    little byte DELL_UTILITY_PARTITION         == 0xde; /* Dell PowerEdge Server utilities */
+    little byte BOOTIT_PARTITION               == 0xdf; /* BootIt EMBRM */
+    little byte DOS_ACCESS_PARTITION           == 0xe1; /* DOS access or SpeedStor 12-bit FAT extended partition */
+    little byte DOS_RO_PARTITION               == 0xe3; /* DOS R/O or SpeedStor */
+    little byte SPEEDSTOR_EXTENDED_PARTITION   == 0xe4; /* SpeedStor 16-bit FAT extended partition < 1024 cyl. */
+    little byte RUFUS_EXTRA_PARTITION          == 0xea; /* Rufus extra partition for alignment */
+    little byte BEOS_FS_PARTITION              == 0xeb;
+    little byte GPT_PARTITION                  == 0xee; /* Intel EFI GUID Partition Table */
+    little byte EFI_SYSTEM_PARTITION           == 0xef; /* Intel EFI System Partition */
+    little byte LINUX_PARISC_BOOT_PARTITION    == 0xf0; /* Linux/PA-RISC boot loader */
+    little byte SPEEDSTOR1_PARTITION           == 0xf1;
+    little byte SPEEDSTOR2_PARTITION           == 0xf4; /* SpeedStor large partition */
+    little byte DOS_SECONDARY_PARTITION        == 0xf2; /* DOS 3.3+ secondary */
+    little byte VMWARE_VMFS_PARTITION          == 0xfb;
+    little byte VMWARE_VMKCORE_PARTITION       == 0xfc; /* VMware kernel dump partition */
+    little byte LINUX_RAID_PARTITION           == 0xfd; /* Linux raid partition with autodetect using persistent superblock */
+    little byte LANSTEP_PARTITION              == 0xfe; /* SpeedStor >1024 cyl. or LANstep */
+    little byte XENIX_BBT_PARTITION            == 0xff; /* Xenix Bad Block Table */
+  };
+
+type MBR_CHSAddress = struct
+  {
+    uint<8> head;
+    uint<2> cylinder_8_9; // Bits 8-9 of the cylinder.
+    uint<6> sector;
+    uint<8> cylinder_0_7; // Bits 0-7 of the cylinder.
+  };
+
+type MBR_Partition = struct
+  {
+    MBR_PartitionStatus status;
+    MBR_CHSAddress first_sector;
+    MBR_PartitionType partition_type;
+    MBR_CHSAddress last_sector;
+    little uint<32> lba_first_sector;
+    little uint<32> lba_last_sector;
+  };
+
+type MBR_BootSignature = struct
+  {
+    byte[2] bs == [ 0x55UB, 0xAAUB ];
+  };
+
+type MBR = struct
+  {
+    byte[446] bootstrap_code;
+    MBR_Partition[4] partition_table;
+    MBR_BootSignature bs;
+  };
