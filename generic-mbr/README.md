@@ -29,7 +29,7 @@ To inspect functions and types defined in the pickle, you can use the
     (poke) .info types MBR
 
 
-[mbr-format]: https://en.wikipedia.org/wiki/Master_boot_record
+[mbr]: https://en.wikipedia.org/wiki/Master_boot_record
 [poke-info]: https://www.jemarch.net/poke-2.4-manual/html_node/info-command.html
 [poke-modules]: https://www.jemarch.net/poke-2.4-manual/html_node/Loading-pickles-as-Modules.html
 [poke]: https://www.gnu.org/software/poke/

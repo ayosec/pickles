@@ -145,7 +145,7 @@ type MBR_Partition = struct
     MBR_PartitionType partition_type;
     MBR_CHSAddress last_sector;
     little uint<32> lba_first_sector;
-    little uint<32> lba_last_sector;
+    little uint<32> lba_number_of_sectors;
   };
 
 type MBR_BootSignature = struct
